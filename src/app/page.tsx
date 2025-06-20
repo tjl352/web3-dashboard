@@ -1,103 +1,136 @@
-import Image from "next/image";
+'use client'
+
+import { useEffect, useState } from 'react';
+import { alchemyWsProvider } from './lib/provider';
+import { getBlockData } from './lib/getBlockData';
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  ResponsiveContainer,
+} from 'recharts';
+
+const TOKEN_ADDRESS = '0xA0b86991c6218B36C1D19D4a2e9Eb0cE3606eB48'; // USDC (USD Coin)
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [blockMetrics, setBlockMetrics] = useState<any[]>([]);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+  // Fetch last 10 blocks on initial load
+  useEffect(() => {
+    const fetchInitial = async () => {
+      const latestBlock = await alchemyWsProvider.getBlockNumber();
+      const blockData = await Promise.all(
+        Array.from({ length: 10 }, (_, i) =>
+          getBlockData(latestBlock - (9 - i), TOKEN_ADDRESS)
+        )
+      );
+      setBlockMetrics(blockData);
+    };
+
+    fetchInitial();
+
+    // Subscribe to new blocks in real-time
+    const handleNewBlock = async (blockNumber: number) => {
+      const data = await getBlockData(blockNumber, TOKEN_ADDRESS);
+      setBlockMetrics((prev) => [...prev.slice(-9), data]); // keep only latest 10
+    };
+
+    alchemyWsProvider.on('block', handleNewBlock);
+
+    return () => {
+      alchemyWsProvider.off('block', handleNewBlock);
+    };
+  }, []);
+
+  // Setup custom Alchemy WebSocket for minedTransactions
+  useEffect(() => {
+    const url = 'wss://eth-mainnet.g.alchemy.com/v2/AReVco-h9y_kzlU5T_frj';
+    const socket = new WebSocket(url);
+
+    socket.addEventListener('open', () => {
+      console.log('✅ Connected to the WebSocket server');
+
+      const subscriptionMessage = {
+        jsonrpc: '2.0',
+        method: 'eth_subscribe',
+        params: [
+          'alchemy_minedTransactions',
+          {
+            addresses: [
+              {
+                to: '0x9f3ce0ad29b767d809642a53c2bccc9a130659d7',
+                from: '0x228f108fd09450d083bb33fe0cc50ae449bc7e11',
+              },
+              {
+                to: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+              },
+            ],
+            includeRemoved: false,
+            hashesOnly: false,
+          },
+        ],
+        id: 1,
+      };
+
+      socket.send(JSON.stringify(subscriptionMessage));
+    });
+
+    socket.addEventListener('message', (event) => {
+      console.log('📩 Mined Transaction:', JSON.parse(event.data));
+    });
+
+    socket.addEventListener('error', (event) => {
+      console.error('❌ WebSocket error:', event);
+    });
+
+    socket.addEventListener('close', (event) => {
+      console.log('🔌 WebSocket connection closed:', event);
+    });
+
+    return () => {
+      socket.close();
+    };
+  }, []);
+
+  return (
+    <div style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
+      <h1>📊 Real-Time Blockchain Dashboard</h1>
+
+      <h2>ERC20 Transfer Volume</h2>
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={blockMetrics}>
+          <XAxis dataKey="blockNumber" />
+          <YAxis />
+          <Tooltip />
+          <CartesianGrid stroke="#ccc" />
+          <Line type="monotone" dataKey="volume" stroke="#8884d8" />
+        </LineChart>
+      </ResponsiveContainer>
+
+      <h2>Base Fee (Gwei)</h2>
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={blockMetrics}>
+          <XAxis dataKey="blockNumber" />
+          <YAxis />
+          <Tooltip />
+          <CartesianGrid stroke="#ccc" />
+          <Line type="monotone" dataKey="baseFee" stroke="#82ca9d" />
+        </LineChart>
+      </ResponsiveContainer>
+
+      <h2>Gas Used / Gas Limit (%)</h2>
+      <ResponsiveContainer width="100%" height={300}>
+        <LineChart data={blockMetrics}>
+          <XAxis dataKey="blockNumber" />
+          <YAxis />
+          <Tooltip />
+          <CartesianGrid stroke="#ccc" />
+          <Line type="monotone" dataKey="gasRatio" stroke="#ff7300" />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 }

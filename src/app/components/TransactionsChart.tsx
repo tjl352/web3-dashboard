@@ -5,7 +5,7 @@ import { formatNumber, formatBlockNumber } from '../lib/format';
 
 interface TransactionsChartProps {
   data: BlockData[];
-  CustomTooltip: React.FC<any>;
+  CustomTooltip: React.FC<Record<string, unknown>>;
 }
 
 const TransactionsChart: React.FC<TransactionsChartProps> = ({ data, CustomTooltip }) => (

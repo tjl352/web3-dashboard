@@ -5,7 +5,7 @@ import { formatNumber, formatBlockNumber } from '../lib/format';
 
 interface UsdcVolumeChartProps {
   data: UsdcVolumeData[];
-  CustomVolumeTooltip: React.FC<any>;
+  CustomVolumeTooltip: React.FC<Record<string, unknown>>;
 }
 
 const UsdcVolumeChart: React.FC<UsdcVolumeChartProps> = ({ data, CustomVolumeTooltip }) => (

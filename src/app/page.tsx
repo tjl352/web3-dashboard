@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ComposedChart, Area, Bar, Scatter, Legend, ResponsiveContainer } from 'recharts';
 import { Alchemy, Network } from 'alchemy-sdk';
 import { JsonRpcProvider } from 'ethers';
 import TransactionsChart from './components/TransactionsChart';
 import UsdcVolumeChart from './components/UsdcVolumeChart';
 import BaseFeeChart from './components/BaseFeeChart';
 import GasUsedPercentChart from './components/GasUsedPercentChart';
+import { TooltipProps } from 'recharts';
+import { BlockData, UsdcVolumeData } from './types/block';
 
 const config = {
   apiKey: process.env.NEXT_PUBLIC_ALCHEMY_API_KEY,
@@ -17,7 +18,7 @@ const config = {
 
 const alchemy = new Alchemy(config);
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
@@ -36,17 +37,9 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 const USDC_ADDRESS = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 const USDC_TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
-const formatNumber = (num: number) => {
-  if (Math.abs(num) >= 1e6) return (num / 1e6).toFixed(2) + 'M';
-  if (Math.abs(num) >= 1e3) return (num / 1e3).toFixed(2) + 'K';
-  return num.toString();
-};
-
-const formatBlockNumber = (num: number) => `#${num.toString().slice(-4)}`;
-
 export default function Dashboard() {
-  const [blockData, setBlockData] = useState<any[]>([]);
-  const [usdcVolumeData, setUsdcVolumeData] = useState<any[]>([]);
+  const [blockData, setBlockData] = useState<BlockData[]>([]);
+  const [usdcVolumeData, setUsdcVolumeData] = useState<UsdcVolumeData[]>([]);
 
   useEffect(() => {
     const httpProvider = new JsonRpcProvider(`https://eth-mainnet.alchemyapi.io/v2/${process.env.NEXT_PUBLIC_ALCHEMY_API_KEY}`);
@@ -58,23 +51,24 @@ export default function Dashboard() {
       }
       const blocks = await Promise.all(blockPromises);
       setBlockData(
-        blocks.reverse().map(block => {
-          if (!block) return null;
+        blocks.reverse().reduce<BlockData[]>((acc, block) => {
+          if (!block) return acc;
           const gasUsed = parseInt(block.gasUsed.toString());
           const gasLimit = parseInt(block.gasLimit.toString());
-          return {
+          acc.push({
             number: block.number,
             gasUsed,
             gasLimit,
             baseFeePerGas: block.baseFeePerGas ? parseInt(block.baseFeePerGas.toString()) : 0,
             transactions: block.transactions.length,
             gasUsedPercent: gasLimit > 0 ? (gasUsed / gasLimit) * 100 : 0,
-          };
-        }).filter(Boolean)
+          });
+          return acc;
+        }, [])
       );
       // Fetch USDC volume for each block (inline logic)
       const usdcVolumePromises = blocks.reverse().map(async block => {
-        if (!block) return null;
+        if (!block) return undefined;
         try {
           const logs = await httpProvider.getLogs({
             address: USDC_ADDRESS,
@@ -92,15 +86,15 @@ export default function Dashboard() {
             number: block.number,
             volume: Number(volume) / 1e6,
           };
-        } catch (e) {
+        } catch {
           return {
             number: block.number,
             volume: 0,
           };
         }
       });
-      const usdcVolumes = await Promise.all(usdcVolumePromises);
-      setUsdcVolumeData(usdcVolumes.filter(Boolean));
+      const usdcVolumes = (await Promise.all(usdcVolumePromises)).filter((v): v is UsdcVolumeData => v !== undefined);
+      setUsdcVolumeData(usdcVolumes);
     };
 
     fetchInitialBlocks();
@@ -133,7 +127,7 @@ export default function Dashboard() {
           }
         }
         setUsdcVolumeData(prev => [...prev.slice(-9), { number: block.number, volume: Number(volume) / 1e6 }]);
-      } catch (e) {
+      } catch {
         setUsdcVolumeData(prev => [...prev.slice(-9), { number: block.number, volume: 0 }]);
       }
     });
@@ -143,7 +137,7 @@ export default function Dashboard() {
     };
   }, []);
 
-  const CustomVolumeTooltip = ({ active, payload, label }: any) => {
+  const CustomVolumeTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
